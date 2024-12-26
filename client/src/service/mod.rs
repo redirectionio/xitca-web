@@ -70,7 +70,8 @@ pub struct ServiceRequest<'r, 'c> {
     pub req: &'r mut Request<RequestBody>,
     pub client: &'c Client,
     pub address: Option<SocketAddr>,
-    pub timeout: Duration,
+    pub request_timeout: Duration,
+    pub response_timeout: Duration,
 }
 
 #[cfg(test)]
@@ -117,7 +118,8 @@ mod test {
                 req,
                 address: None,
                 client: &self.0,
-                timeout: self.0.timeout_config.request_timeout,
+                request_timeout: self.0.timeout_config.request_timeout,
+                response_timeout: self.0.timeout_config.response_timeout,
             }
         }
     }
@@ -128,7 +130,9 @@ mod test {
 
         async fn call(
             &self,
-            ServiceRequest { req, timeout, .. }: ServiceRequest<'r, 'c>,
+            ServiceRequest {
+                req, response_timeout, ..
+            }: ServiceRequest<'r, 'c>,
         ) -> Result<Self::Response, Self::Error> {
             let handler = req.extensions().get::<HandlerFn>().unwrap().clone();
 
@@ -137,7 +141,7 @@ mod test {
             Ok(Response::new(
                 res,
                 Box::pin(tokio::time::sleep(Duration::from_secs(0))),
-                timeout,
+                response_timeout,
             ))
         }
     }

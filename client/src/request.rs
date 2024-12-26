@@ -17,9 +17,10 @@ use crate::{
 pub struct RequestBuilder<'a, M = marker::Http> {
     pub(crate) req: http::Request<RequestBody>,
     pub(crate) err: Vec<Error>,
-    client: &'a Client,
     address: Option<SocketAddr>,
-    timeout: Duration,
+    client: &'a Client,
+    request_timeout: Duration,
+    response_timeout: Duration,
     _marker: PhantomData<M>,
 }
 
@@ -132,7 +133,8 @@ impl<'a, M> RequestBuilder<'a, M> {
             err: Vec::new(),
             address: None,
             client,
-            timeout: client.timeout_config.request_timeout,
+            request_timeout: client.timeout_config.request_timeout,
+            response_timeout: client.timeout_config.response_timeout,
             _marker: PhantomData,
         }
     }
@@ -143,7 +145,8 @@ impl<'a, M> RequestBuilder<'a, M> {
             err: self.err,
             address: self.address,
             client: self.client,
-            timeout: self.timeout,
+            request_timeout: self.request_timeout,
+            response_timeout: self.response_timeout,
             _marker: PhantomData,
         }
     }
@@ -155,7 +158,8 @@ impl<'a, M> RequestBuilder<'a, M> {
             err,
             address,
             client,
-            timeout,
+            request_timeout,
+            response_timeout,
             ..
         } = self;
 
@@ -169,7 +173,8 @@ impl<'a, M> RequestBuilder<'a, M> {
                 req: &mut req,
                 address,
                 client,
-                timeout,
+                request_timeout,
+                response_timeout,
             })
             .await
     }
@@ -248,14 +253,19 @@ impl<'a, M> RequestBuilder<'a, M> {
         self
     }
 
-    /// Set timeout of this request.
+    /// Set timeout for request.
     ///
-    /// The value passed would override global [ClientBuilder::set_request_timeout].
+    /// Default to client's [TimeoutConfig::request_timeout].
+    pub fn set_request_timeout(mut self, dur: Duration) -> Self {
+        self.request_timeout = dur;
+        self
+    }
+
+    /// Set timeout for collecting response body.
     ///
-    /// [ClientBuilder::set_request_timeout]: crate::builder::ClientBuilder::set_request_timeout
-    #[inline]
-    pub fn timeout(mut self, dur: Duration) -> Self {
-        self.timeout = dur;
+    /// Default to client's [TimeoutConfig::response_timeout].
+    pub fn set_response_timeout(mut self, dur: Duration) -> Self {
+        self.response_timeout = dur;
         self
     }
 

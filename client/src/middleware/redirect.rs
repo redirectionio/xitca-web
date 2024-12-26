@@ -53,7 +53,8 @@ where
             req,
             address,
             client,
-            timeout,
+            request_timeout,
+            response_timeout,
         } = req;
         let mut headers = req.headers().clone();
         let mut method = req.method().clone();
@@ -68,7 +69,8 @@ where
                     req,
                     address,
                     client,
-                    timeout,
+                    request_timeout,
+                    response_timeout,
                 })
                 .await?;
 

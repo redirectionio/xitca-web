@@ -27,7 +27,8 @@ pub(crate) fn base_service() -> HttpService {
                 req,
                 address,
                 client,
-                timeout,
+                request_timeout,
+                response_timeout,
             } = req;
 
             let uri = Uri::try_parse(req.uri())?;
@@ -56,7 +57,7 @@ pub(crate) fn base_service() -> HttpService {
 
             match lease {
                 Lease::Shared { mut conn, version } => {
-                    let mut _timer = Box::pin(tokio::time::sleep(timeout));
+                    let mut _timer = Box::pin(tokio::time::sleep(request_timeout));
                     *req.version_mut() = version;
                     #[allow(unreachable_patterns, unreachable_code)]
                     match conn.deref_mut() {
@@ -66,10 +67,7 @@ pub(crate) fn base_service() -> HttpService {
                                 .timeout(_timer.as_mut())
                                 .await
                             {
-                                Ok(Ok(res)) => {
-                                    let timeout = client.timeout_config.response_timeout;
-                                    Ok(Response::new(res, _timer, timeout))
-                                }
+                                Ok(Ok(res)) => Ok(Response::new(res, _timer, response_timeout)),
                                 Ok(Err(e)) => {
                                     conn.mark_destroy();
                                     Err(e.into())
@@ -87,8 +85,7 @@ pub(crate) fn base_service() -> HttpService {
                                 .await
                                 .map_err(|_| TimeoutError::Request)??;
 
-                            let timeout = client.timeout_config.response_timeout;
-                            Ok(Response::new(res, _timer, timeout))
+                            Ok(Response::new(res, _timer, response_timeout))
                         }
                         _ => unreachable!("ConnectionShared has no enabled variants"),
                     }
@@ -101,7 +98,7 @@ pub(crate) fn base_service() -> HttpService {
 
                     #[cfg(feature = "http1")]
                     {
-                        let mut timer = Box::pin(tokio::time::sleep(timeout));
+                        let mut timer = Box::pin(tokio::time::sleep(request_timeout));
                         let res = crate::h1::proto::send(_conn.deref_mut(), _date, req)
                             .timeout(timer.as_mut())
                             .await;
@@ -113,8 +110,7 @@ pub(crate) fn base_service() -> HttpService {
                                 }
                                 let body = crate::h1::body::ResponseBody::new(_conn, buf, decoder);
                                 let res = res.map(|_| crate::body::ResponseBody::H1(body));
-                                let timeout = client.timeout_config.response_timeout;
-                                Ok(Response::new(res, timer, timeout))
+                                Ok(Response::new(res, timer, response_timeout))
                             }
                             Ok(Err(e)) => {
                                 _conn.mark_destroy();
