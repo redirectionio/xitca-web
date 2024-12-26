@@ -23,11 +23,16 @@ pub(crate) fn base_service() -> HttpService {
             #[cfg(any(feature = "http1", feature = "http2", feature = "http3"))]
             use crate::{error::TimeoutError, timeout::Timeout};
 
-            let ServiceRequest { req, client, timeout } = req;
+            let ServiceRequest {
+                req,
+                address,
+                client,
+                timeout,
+            } = req;
 
             let uri = Uri::try_parse(req.uri())?;
             let version = req.version();
-            let connect = Connect::new(uri);
+            let connect = Connect::new(uri, address);
 
             let _date = client.date_service.handle();
 

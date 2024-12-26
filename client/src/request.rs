@@ -1,4 +1,4 @@
-use core::{marker::PhantomData, time::Duration};
+use core::{marker::PhantomData, net::SocketAddr, time::Duration};
 
 use crate::{
     body::{Body, BodyError, BodyExt, BoxBody, Data, RequestBody, Trailers, downcast_body},
@@ -18,6 +18,7 @@ pub struct RequestBuilder<'a, M = marker::Http> {
     pub(crate) req: http::Request<RequestBody>,
     pub(crate) err: Vec<Error>,
     client: &'a Client,
+    address: Option<SocketAddr>,
     timeout: Duration,
     _marker: PhantomData<M>,
 }
@@ -129,6 +130,7 @@ impl<'a, M> RequestBuilder<'a, M> {
         Self {
             req: req.map(downcast_body),
             err: Vec::new(),
+            address: None,
             client,
             timeout: client.timeout_config.request_timeout,
             _marker: PhantomData,
@@ -139,6 +141,7 @@ impl<'a, M> RequestBuilder<'a, M> {
         RequestBuilder {
             req: self.req,
             err: self.err,
+            address: self.address,
             client: self.client,
             timeout: self.timeout,
             _marker: PhantomData,
@@ -150,6 +153,7 @@ impl<'a, M> RequestBuilder<'a, M> {
         let Self {
             mut req,
             err,
+            address,
             client,
             timeout,
             ..
@@ -163,6 +167,7 @@ impl<'a, M> RequestBuilder<'a, M> {
             .service
             .call(ServiceRequest {
                 req: &mut req,
+                address,
                 client,
                 timeout,
             })
@@ -251,6 +256,13 @@ impl<'a, M> RequestBuilder<'a, M> {
     #[inline]
     pub fn timeout(mut self, dur: Duration) -> Self {
         self.timeout = dur;
+        self
+    }
+
+    /// Set specific address for this request.
+    #[inline]
+    pub fn address(mut self, addr: SocketAddr) -> Self {
+        self.address = Some(addr);
         self
     }
 
