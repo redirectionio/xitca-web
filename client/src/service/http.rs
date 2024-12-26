@@ -33,7 +33,7 @@ pub(crate) fn base_service() -> HttpService {
 
             let uri = Uri::try_parse(req.uri())?;
             let version = req.version();
-            let connect = Connect::new(uri, address);
+            let connect = Connect::new(uri, address, req.extensions().get());
 
             let _date = client.date_service.handle();
 

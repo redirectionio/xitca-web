@@ -5,7 +5,9 @@ use std::io;
 use xitca_io::io::{AsyncIoDyn, Interest};
 
 use super::{
+    connect::Connect,
     http::uri::{Authority, PathAndQuery},
+    request::SniHostname,
     tls::TlsStream,
     uri::Uri,
 };
@@ -86,19 +88,28 @@ impl From<crate::h3::Connection> for ConnectionShared {
 #[doc(hidden)]
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub enum ConnectionKey {
-    Regular { authority: Authority, is_tls: bool },
-    Unix { authority: Authority, path: PathAndQuery },
+    Regular {
+        authority: Authority,
+        sni: Option<SniHostname>,
+        is_tls: bool,
+    },
+    Unix {
+        authority: Authority,
+        path: PathAndQuery,
+    },
 }
 
-impl From<&Uri<'_>> for ConnectionKey {
-    fn from(uri: &Uri<'_>) -> Self {
-        match *uri {
+impl From<&Connect<'_>> for ConnectionKey {
+    fn from(connect: &Connect<'_>) -> Self {
+        match connect.uri {
             Uri::Tcp(uri) => ConnectionKey::Regular {
                 authority: uri.authority().unwrap().clone(),
+                sni: connect.sni_hostname.cloned(),
                 is_tls: false,
             },
             Uri::Tls(uri) => ConnectionKey::Regular {
                 authority: uri.authority().unwrap().clone(),
+                sni: connect.sni_hostname.cloned(),
                 is_tls: true,
             },
             Uri::Unix(uri) => ConnectionKey::Unix {

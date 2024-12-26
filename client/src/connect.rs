@@ -2,7 +2,7 @@ use core::{fmt, iter, net::SocketAddr};
 
 use std::collections::vec_deque::{self, VecDeque};
 
-use crate::uri::Uri;
+use crate::{request::SniHostname, uri::Uri};
 
 pub trait Address {
     /// Get hostname part.
@@ -75,11 +75,12 @@ pub struct Connect<'a> {
     pub(crate) uri: Uri<'a>,
     pub(crate) port: u16,
     pub(crate) addr: Addrs,
+    pub(crate) sni_hostname: Option<&'a SniHostname>,
 }
 
 impl<'a> Connect<'a> {
     /// Create `Connect` instance by splitting the string by ':' and convert the second part to u16
-    pub fn new(uri: Uri<'a>, address: Option<SocketAddr>) -> Self {
+    pub fn new(uri: Uri<'a>, address: Option<SocketAddr>, sni_hostname: Option<&'a SniHostname>) -> Self {
         let (_, port) = parse_host(uri.hostname());
 
         Self {
@@ -89,6 +90,7 @@ impl<'a> Connect<'a> {
                 Some(address) => Addrs::One(address),
                 None => Addrs::None,
             },
+            sni_hostname,
         }
     }
 
@@ -108,6 +110,13 @@ impl<'a> Connect<'a> {
     /// Get hostname.
     pub fn hostname(&self) -> &str {
         self.uri.hostname()
+    }
+
+    /// Get sni hostname.
+    pub fn sni_hostname(&self) -> &str {
+        self.sni_hostname
+            .map(|s| s.0.as_str())
+            .unwrap_or_else(|| self.hostname())
     }
 
     /// Get request port.

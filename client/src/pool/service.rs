@@ -176,7 +176,7 @@ async fn establish(
                     .as_mut()
                     .reset(tokio::time::Instant::now() + client.timeout_config.connect_timeout);
 
-                match crate::h3::proto::connect(&client.h3_client, connect.addrs(), connect.hostname())
+                match crate::h3::proto::connect(&client.h3_client, connect.addrs(), connect.sni_hostname())
                     .timeout(timer.as_mut())
                     .await
                 {
@@ -314,7 +314,7 @@ impl<'a, 'c> Service<PoolRequest<'a, 'c>> for DefaultPool {
     async fn call(&self, mut req: PoolRequest<'a, 'c>) -> Result<Self::Response, Self::Error> {
         loop {
             match req.version {
-                Version::HTTP_2 | Version::HTTP_3 => match self.shared.acquire(&req.connect.uri).await {
+                Version::HTTP_2 | Version::HTTP_3 => match self.shared.acquire(&req.connect).await {
                     shared::AcquireOutput::Conn(c) => {
                         // shared::Pool::acquire has already probed the cached
                         // entry via the Ready trait — by this point the
@@ -334,7 +334,7 @@ impl<'a, 'c> Service<PoolRequest<'a, 'c>> for DefaultPool {
                                 drop(spawner);
                                 #[cfg(feature = "http1")]
                                 {
-                                    self.exclusive.try_add(&req.connect.uri, conn);
+                                    self.exclusive.try_add(&req.connect, conn);
                                     req.version = version;
                                 }
                                 #[cfg(not(feature = "http1"))]
@@ -351,7 +351,7 @@ impl<'a, 'c> Service<PoolRequest<'a, 'c>> for DefaultPool {
                         }
                     }
                 },
-                ver => match self.exclusive.acquire(&req.connect.uri).await {
+                ver => match self.exclusive.acquire(&req.connect).await {
                     exclusive::AcquireOutput::Conn(c) => {
                         return Ok(Lease::exclusive(c, ver));
                     }

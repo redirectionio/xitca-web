@@ -1,4 +1,6 @@
 use core::{marker::PhantomData, net::SocketAddr, time::Duration};
+use std::hash::Hash;
+use xitca_unsafe_collection::bytes::BytesStr;
 
 use crate::{
     body::{Body, BodyError, BodyExt, BoxBody, Data, RequestBody, Trailers, downcast_body},
@@ -276,6 +278,15 @@ impl<'a, M> RequestBuilder<'a, M> {
         self
     }
 
+    /// Set SNI hostname of this request.
+    #[inline]
+    pub fn sni_hostname(mut self, sni_hostname: &str) -> Self {
+        self.req
+            .extensions_mut()
+            .insert(SniHostname(BytesStr::from(sni_hostname)));
+        self
+    }
+
     fn map_body<B>(mut self, b: B) -> RequestBuilder<'a, M>
     where
         B: Body + Send + 'static,
@@ -284,5 +295,14 @@ impl<'a, M> RequestBuilder<'a, M> {
     {
         self.req = self.req.map(|_| downcast_body(b));
         self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SniHostname(pub(crate) BytesStr);
+
+impl Hash for SniHostname {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
