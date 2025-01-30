@@ -2,8 +2,11 @@ use std::{
     future::Future,
     io, mem,
     pin::Pin,
+    sync::Arc,
     task::{ready, Context, Poll},
 };
+use tokio::task::JoinHandle;
+use xitca_io::net::Listener;
 
 use crate::signals::{self, Signal, SignalFuture};
 
@@ -13,6 +16,7 @@ use super::{handle::ServerHandle, Command, Server};
 pub enum ServerFuture {
     Init { server: Server, enable_signal: bool },
     Running(ServerFutureInner),
+    InShutdown(Vec<Arc<Listener>>, JoinHandle<()>),
     Error(io::Error),
     Finished,
 }
@@ -47,15 +51,18 @@ impl ServerFuture {
         match *self {
             Self::Init { ref server, .. } => Ok(ServerHandle {
                 tx: server.tx_cmd.clone(),
+                listeners: server.listeners.clone(),
             }),
             Self::Running(ref inner) => Ok(ServerHandle {
                 tx: inner.server.tx_cmd.clone(),
+                listeners: inner.server.listeners.clone(),
             }),
             Self::Error(_) => match mem::take(self) {
                 Self::Error(e) => Err(e),
                 _ => unreachable!(),
             },
             Self::Finished => panic!("ServerFuture used after finished"),
+            Self::InShutdown(..) => panic!("ServerFuture used after shutdown"),
         }
     }
 
@@ -63,7 +70,7 @@ impl ServerFuture {
     ///
     /// Server can be stopped through OS signal or [ServerHandle::stop]. If none is active this call
     /// would block forever.
-    pub fn wait(self) -> io::Result<()> {
+    pub fn wait(self) -> io::Result<Vec<Arc<Listener>>> {
         match self {
             Self::Init {
                 mut server,
@@ -93,12 +100,32 @@ impl ServerFuture {
                     Err(_) => func(),
                 };
 
-                server_fut.handle_cmd(cmd);
-                Ok(())
+                let (listeners, shutdown_fut) = server_fut.handle_cmd(cmd).unwrap();
+
+                let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+
+                let shutdown_func = move || {
+                    let _ = rt.block_on(shutdown_fut);
+                };
+
+                match tokio::runtime::Handle::try_current() {
+                    Ok(_) => {
+                        tracing::warn!("ServerFuture::wait is called from within tokio context. It would block current thread from handling async tasks.");
+                        std::thread::Builder::new()
+                            .name(String::from("xitca-server-wait-scoped"))
+                            .spawn(shutdown_func)?
+                            .join()
+                            .expect("ServerFutureInner unexpected panicing")
+                    }
+                    Err(_) => shutdown_func(),
+                };
+
+                Ok(listeners)
             }
             Self::Running(..) => panic!("ServerFuture is already polled."),
             Self::Error(e) => Err(e),
             Self::Finished => unreachable!(),
+            Self::InShutdown(..) => unreachable!(),
         }
     }
 }
@@ -149,20 +176,16 @@ impl ServerFutureInner {
     }
 
     #[inline(never)]
-    fn handle_cmd(&mut self, cmd: Command) {
+    fn handle_cmd(&mut self, cmd: Command) -> Option<(Vec<Arc<Listener>>, JoinHandle<()>)> {
         match cmd {
-            Command::ForceStop => {
-                self.server.stop(false);
-            }
-            Command::GracefulStop => {
-                self.server.stop(true);
-            }
+            Command::ForceStop => self.server.stop(false),
+            Command::GracefulStop => self.server.stop(true),
         }
     }
 }
 
 impl Future for ServerFuture {
-    type Output = io::Result<()>;
+    type Output = io::Result<Vec<Arc<Listener>>>;
 
     #[inline(never)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -177,13 +200,23 @@ impl Future for ServerFuture {
             },
             Self::Running(ref mut inner) => {
                 let cmd = ready!(inner.poll_cmd(cx));
-                inner.handle_cmd(cmd);
-                self.set(Self::Finished);
-                Poll::Ready(Ok(()))
+                let (listeners, handle) = inner.handle_cmd(cmd).unwrap();
+
+                self.set(Self::InShutdown(listeners, handle));
+                self.poll(cx)
             }
             Self::Error(_) => match mem::take(this) {
                 Self::Error(e) => Poll::Ready(Err(e)),
                 _ => unreachable!(""),
+            },
+            Self::InShutdown(ref mut listeners, ref mut handle) => match Pin::new(handle).poll(cx) {
+                Poll::Ready(Ok(())) => {
+                    let listeners = mem::take(listeners);
+                    self.set(Self::Finished);
+                    Poll::Ready(Ok(listeners))
+                }
+                Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                Poll::Pending => Poll::Pending,
             },
             Self::Finished => unreachable!("ServerFuture polled after finish"),
         }

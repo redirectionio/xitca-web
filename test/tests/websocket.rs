@@ -34,7 +34,7 @@ async fn message() -> Result<(), Error> {
     assert_eq!(msg, Message::Close(None));
 
     handle.try_handle()?.stop(true);
-    handle.await.map_err(Into::into)
+    handle.await.map_err(Into::into).map(|_| ())
 }
 
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn message_h2() -> Result<(), Error> {
 
     handle.try_handle()?.stop(true);
     tokio::task::yield_now().await;
-    handle.await.map_err(Into::into)
+    handle.await.map_err(Into::into).map(|_| ())
 }
 
 async fn handler<B, E>(

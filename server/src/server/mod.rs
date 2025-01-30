@@ -15,12 +15,13 @@ use std::{
     thread,
 };
 
+use crate::{builder::Builder, worker};
+use tokio::task::JoinHandle;
 use tokio::{
     runtime::Runtime,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
 };
-
-use crate::{builder::Builder, worker};
+use xitca_io::net::Listener;
 
 pub struct Server {
     is_graceful_shutdown: Arc<AtomicBool>,
@@ -28,6 +29,7 @@ pub struct Server {
     rx_cmd: UnboundedReceiver<Command>,
     rt: Option<Runtime>,
     worker_join_handles: Vec<thread::JoinHandle<io::Result<()>>>,
+    listeners: Vec<Arc<Listener>>,
 }
 
 impl Server {
@@ -124,6 +126,7 @@ impl Server {
 
         let is_graceful_shutdown = Arc::new(AtomicBool::new(false));
         let is_graceful_shutdown2 = is_graceful_shutdown.clone();
+        let server_listeners = listeners.iter().map(|(_, l)| l.clone()).collect::<Vec<_>>();
 
         let worker_handles = thread::Builder::new()
             .name(String::from("xitca-server-worker-shared-scope"))
@@ -188,17 +191,27 @@ impl Server {
             rx_cmd,
             rt: Some(rt),
             worker_join_handles: vec![worker_handles],
+            listeners: server_listeners,
         })
     }
 
-    pub(crate) fn stop(&mut self, graceful: bool) {
-        if let Some(rt) = self.rt.take() {
-            self.is_graceful_shutdown.store(graceful, Ordering::SeqCst);
-            rt.shutdown_background();
-            mem::take(&mut self.worker_join_handles).into_iter().for_each(|handle| {
+    pub(crate) fn stop(&mut self, graceful: bool) -> Option<(Vec<Arc<Listener>>, JoinHandle<()>)> {
+        let rt = self.rt.take()?;
+
+        self.is_graceful_shutdown.store(graceful, Ordering::SeqCst);
+        let listeners = self.listeners.clone();
+
+        rt.shutdown_background();
+
+        let worker_join_handles = mem::take(&mut self.worker_join_handles);
+
+        let stop_future = tokio::spawn(async move {
+            worker_join_handles.into_iter().for_each(|handle| {
                 let _ = handle.join().unwrap();
             });
-        }
+        });
+
+        Some((listeners, stop_future))
     }
 }
 
