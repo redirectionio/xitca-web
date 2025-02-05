@@ -11,6 +11,7 @@ use crate::{
     error::{HttpServiceError, TimeoutError},
     http::{Request, RequestExt, Response},
     service::HttpService,
+    tls::IsTls,
     util::timer::Timeout,
 };
 
@@ -21,7 +22,7 @@ impl<St, Io, S, B, A, const HEADER_LIMIT: usize, const READ_BUF_LIMIT: usize, co
     Service<(St, SocketAddr)> for H1Service<St, Io, S, A, HEADER_LIMIT, READ_BUF_LIMIT, WRITE_BUF_LIMIT>
 where
     S: Service<Request<RequestExt<RequestBody>>, Response = Response<B>>,
-    A: Service<St>,
+    A: Service<St> + IsTls,
     A::Response: AsyncBufRead + AsyncBufWrite + 'static,
     B: Body<Data = Bytes>,
     HttpServiceError<S::Error, B::Error>: From<A::Error>,
@@ -48,6 +49,7 @@ where
             self.config,
             &self.service,
             self.date.get(),
+            self.tls_acceptor.is_tls(),
         )
         .await
         .map_err(Into::into)

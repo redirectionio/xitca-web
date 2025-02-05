@@ -8,7 +8,7 @@ use xitca_tls::rustls::{Error, ServerConfig, TlsStream as _TlsStream, server::Un
 
 use crate::{http::Version, version::AsVersion};
 
-use super::error::TlsError;
+use super::{IsTls, error::TlsError};
 
 pub(crate) type RustlsConfig = Arc<ServerConfig>;
 
@@ -64,6 +64,8 @@ where
         _TlsStream::handshake(io, conn).await.map_err(Into::into)
     }
 }
+
+impl IsTls for TlsAcceptorService {}
 
 /// Collection of 'rustls' error types.
 pub enum RustlsError {

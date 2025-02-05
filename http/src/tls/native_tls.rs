@@ -7,7 +7,7 @@ use xitca_service::Service;
 
 use crate::{http::Version, version::AsVersion};
 
-use super::error::TlsError;
+use super::{IsTls, error::TlsError};
 
 pub type TlsStream<Io> = xitca_tls::native_tls::TlsStream<Io>;
 
@@ -74,3 +74,5 @@ impl From<NativeTlsError> for TlsError {
         Self::NativeTls(e)
     }
 }
+
+impl IsTls for TlsAcceptorService {}
