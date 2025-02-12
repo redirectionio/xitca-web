@@ -27,6 +27,7 @@ pub struct ClientBuilder {
     pool_capacity: usize,
     keep_alive_idle: Duration,
     keep_alive_born: Duration,
+    keep_alive_max_requests: usize,
     timeout_config: TimeoutConfig,
     local_addr: Option<SocketAddr>,
     max_http_version: Version,
@@ -50,6 +51,7 @@ impl ClientBuilder {
             pool_capacity: 2,
             keep_alive_idle: Duration::from_secs(60),
             keep_alive_born: Duration::from_secs(3600),
+            keep_alive_max_requests: 10_000,
             timeout_config: TimeoutConfig::new(),
             local_addr: None,
             max_http_version: max_http_version(),
@@ -447,6 +449,17 @@ impl ClientBuilder {
         self
     }
 
+    /// Set max requests to handle for a keep alive connection.
+    ///
+    /// This settings will force the connection to be dropped after this many requests.
+    ///
+    /// Default to 10 000.
+    ///
+    pub fn set_keep_alive_max_requests(mut self, max_requests: usize) -> Self {
+        self.keep_alive_max_requests = max_requests;
+        self
+    }
+
     /// Set max http version client would be used.
     ///
     /// Default to the max version of http feature enabled within Cargo.toml
@@ -521,9 +534,14 @@ impl ClientBuilder {
             endpoint
         };
 
-        let pool = self
-            .pool
-            .unwrap_or_else(|| pool_service::base_pool(self.pool_capacity, self.keep_alive_idle, self.keep_alive_born));
+        let pool = self.pool.unwrap_or_else(|| {
+            pool_service::base_pool(
+                self.pool_capacity,
+                self.keep_alive_idle,
+                self.keep_alive_born,
+                self.keep_alive_max_requests,
+            )
+        });
 
         Client {
             pool,

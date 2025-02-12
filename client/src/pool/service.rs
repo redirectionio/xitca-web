@@ -300,9 +300,14 @@ pub(crate) struct DefaultPool {
 }
 
 /// construct the default [PoolService] implementation.
-pub(crate) fn base_pool(cap: usize, keep_alive_idle: Duration, keep_alive_born: Duration) -> PoolService {
+pub(crate) fn base_pool(
+    cap: usize,
+    keep_alive_idle: Duration,
+    keep_alive_born: Duration,
+    keep_alive_max_requests: usize,
+) -> PoolService {
     Box::new(DefaultPool {
-        exclusive: exclusive::Pool::new(cap, keep_alive_idle, keep_alive_born),
+        exclusive: exclusive::Pool::new(cap, keep_alive_idle, keep_alive_born, keep_alive_max_requests),
         shared: shared::Pool::with_capacity(cap),
     })
 }
