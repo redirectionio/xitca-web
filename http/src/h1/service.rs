@@ -46,7 +46,7 @@ where
             addr,
             crate::bytes::BytesMut::new(),
             timer,
-            self.config,
+            self.config.clone(),
             &self.service,
             self.date.get(),
             self.tls_acceptor.is_tls(),
