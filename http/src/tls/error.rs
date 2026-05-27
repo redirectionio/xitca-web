@@ -8,6 +8,8 @@ pub enum TlsError {
     Openssl(super::openssl::OpensslError),
     #[cfg(feature = "rustls")]
     Rustls(super::rustls::RustlsError),
+    #[cfg(any(feature = "rustls-poll-ring-crypto", feature = "rustls-poll-aws-crypto"))]
+    RustlsPoll(super::rustls_poll::RustlsError),
     #[cfg(feature = "native-tls")]
     NativeTls(super::native_tls::NativeTlsError),
     OtherTls(Box<dyn error::Error + Send + Sync>),
@@ -21,6 +23,8 @@ impl fmt::Debug for TlsError {
             Self::Openssl(ref e) => fmt::Debug::fmt(e, _f),
             #[cfg(feature = "rustls")]
             Self::Rustls(ref e) => fmt::Debug::fmt(e, _f),
+            #[cfg(any(feature = "rustls-poll-ring-crypto", feature = "rustls-poll-aws-crypto"))]
+            Self::RustlsPoll(ref e) => fmt::Debug::fmt(e, _f),
             #[cfg(feature = "native-tls")]
             Self::NativeTls(ref e) => fmt::Debug::fmt(e, _f),
             Self::OtherTls(ref e) => fmt::Debug::fmt(e, _f),
@@ -36,6 +40,8 @@ impl fmt::Display for TlsError {
             Self::Openssl(ref e) => fmt::Debug::fmt(e, _f),
             #[cfg(feature = "rustls")]
             Self::Rustls(ref e) => fmt::Debug::fmt(e, _f),
+            #[cfg(any(feature = "rustls-poll-ring-crypto", feature = "rustls-poll-aws-crypto"))]
+            Self::RustlsPoll(ref e) => fmt::Debug::fmt(e, _f),
             #[cfg(feature = "native-tls")]
             Self::NativeTls(ref e) => fmt::Display::fmt(e, _f),
             Self::OtherTls(ref e) => fmt::Display::fmt(e, _f),
@@ -67,6 +73,13 @@ impl<S, B> From<super::openssl::OpensslError> for HttpServiceError<S, B> {
 #[cfg(feature = "rustls")]
 impl<S, B> From<super::rustls::RustlsError> for HttpServiceError<S, B> {
     fn from(e: super::rustls::RustlsError) -> Self {
+        Self::Tls(e.into())
+    }
+}
+
+#[cfg(any(feature = "rustls-poll-ring-crypto", feature = "rustls-poll-aws-crypto"))]
+impl<S, B> From<super::rustls_poll::RustlsError> for HttpServiceError<S, B> {
+    fn from(e: super::rustls_poll::RustlsError) -> Self {
         Self::Tls(e.into())
     }
 }

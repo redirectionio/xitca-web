@@ -10,6 +10,8 @@ pub(crate) mod native_tls;
 pub(crate) mod openssl;
 #[cfg(feature = "rustls")]
 pub(crate) mod rustls;
+#[cfg(any(feature = "rustls-poll-ring-crypto", feature = "rustls-poll-aws-crypto"))]
+pub(crate) mod rustls_poll;
 
 mod error;
 

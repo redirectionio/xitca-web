@@ -316,10 +316,8 @@ mod test {
         let mut res = Response::new(BoxBody::new(Full::new(Bytes::new())));
 
         // Cookie header values MUST be joined with "; " per RFC 6265 Section 5.4
-        res.headers_mut()
-            .insert(COOKIE, HeaderValue::from_static("foo=foo"));
-        res.headers_mut()
-            .append(COOKIE, HeaderValue::from_static("bar=bar"));
+        res.headers_mut().insert(COOKIE, HeaderValue::from_static("foo=foo"));
+        res.headers_mut().append(COOKIE, HeaderValue::from_static("bar=bar"));
 
         let (parts, body) = res.into_parts();
 

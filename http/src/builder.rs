@@ -182,6 +182,23 @@ impl<V, Io, St, FA, const HEADER_LIMIT: usize, const READ_BUF_LIMIT: usize, cons
         self.with_tls(tls::rustls::TlsAcceptorBuilder::new(config))
     }
 
+    #[cfg(any(feature = "rustls-poll-ring-crypto", feature = "rustls-poll-aws-crypto"))]
+    /// use rustls with a crypto backend as tls service. tls service is used for Http/1 and Http/2 protocols.
+    pub fn rustls_poll(
+        self,
+        config: tls::rustls_poll::RustlsConfig,
+    ) -> HttpServiceBuilder<
+        V,
+        Io,
+        St,
+        tls::rustls_poll::TlsAcceptorBuilder,
+        HEADER_LIMIT,
+        READ_BUF_LIMIT,
+        WRITE_BUF_LIMIT,
+    > {
+        self.with_tls(tls::rustls_poll::TlsAcceptorBuilder::new(config))
+    }
+
     #[cfg(feature = "native-tls")]
     /// use native-tls as tls service. tnative-tlsls service is used for Http/1 protocol only.
     pub fn native_tls(
