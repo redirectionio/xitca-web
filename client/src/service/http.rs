@@ -70,7 +70,7 @@ pub(crate) fn base_service() -> HttpService {
                                 Ok(Ok(res)) => Ok(Response::new(res, _timer, response_timeout)),
                                 Ok(Err(e)) => {
                                     conn.mark_destroy();
-                                    Err(e.into())
+                                    Err(e)
                                 }
                                 Err(_) => {
                                     conn.mark_destroy();
@@ -114,7 +114,7 @@ pub(crate) fn base_service() -> HttpService {
                             }
                             Ok(Err(e)) => {
                                 _conn.mark_destroy();
-                                Err(e.into())
+                                Err(e)
                             }
                             Err(_) => {
                                 _conn.mark_destroy();

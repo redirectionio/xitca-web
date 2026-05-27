@@ -7,7 +7,8 @@ use crate::{
     body::{Body, BodyError, BodyExt, Frame, ResponseBody, SizeHint},
     bytes::Bytes,
     date::DateTimeHandle,
-    h3::{Connection, Error},
+    error::Error,
+    h3::{Connection, Error as H3Error},
     http::{
         Method, Request, Response,
         header::{CONTENT_LENGTH, DATE, HOST, HeaderValue},
@@ -77,16 +78,16 @@ where
         _ => {}
     }
 
-    let mut stream = stream.send_request(req).await?;
+    let mut stream = stream.send_request(req).await.map_err(H3Error::from)?;
 
     if !is_eof {
         let mut body = pin!(body);
         while let Some(frame) = body.as_mut().frame().await {
             let frame = frame.map_err(BodyError::from)?;
             match frame {
-                Frame::Data(bytes) => stream.send_data(bytes).await?,
+                Frame::Data(bytes) => stream.send_data(bytes).await.map_err(H3Error::from)?,
                 Frame::Trailers(trailers) => {
-                    stream.send_trailers(trailers).await?;
+                    stream.send_trailers(trailers).await.map_err(H3Error::from)?;
                     break;
                 }
             }
@@ -94,10 +95,10 @@ where
     }
 
     if should_finish {
-        stream.finish().await?;
+        stream.finish().await.map_err(H3Error::from)?;
     }
 
-    let res = stream.recv_response().await?;
+    let res = stream.recv_response().await.map_err(H3Error::from)?;
 
     let res = if is_head_method {
         res.map(|_| ResponseBody::Eof)
@@ -112,7 +113,7 @@ pub(crate) async fn connect(
     endpoint: &Endpoint,
     addrs: impl Iterator<Item = SocketAddr>,
     hostname: &str,
-) -> Result<Connection, Error> {
+) -> Result<Connection, H3Error> {
     let mut err = None;
     for addr in addrs {
         match _connect(endpoint, addr, hostname).await {
@@ -123,7 +124,7 @@ pub(crate) async fn connect(
     Err(err.unwrap())
 }
 
-async fn _connect(client: &Endpoint, addr: SocketAddr, hostname: &str) -> Result<Connection, Error> {
+async fn _connect(client: &Endpoint, addr: SocketAddr, hostname: &str) -> Result<Connection, H3Error> {
     let conn = client.connect(addr, hostname)?.await?;
 
     let (mut task, conn) = h3::client::builder()

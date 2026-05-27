@@ -10,7 +10,8 @@ use crate::{
     body::{Body, BodyError, Frame, ResponseBody, SizeHint},
     bytes::Bytes,
     date::DateTimeHandle,
-    h2::{Connection, Error, body::ResponseBody as H2ResponseBody},
+    error::Error,
+    h2::{Connection, body::ResponseBody as H2ResponseBody},
     http::{
         self,
         header::{CONNECTION, CONTENT_LENGTH, DATE, HOST, HeaderValue, TRANSFER_ENCODING, UPGRADE},

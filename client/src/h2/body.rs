@@ -80,7 +80,7 @@ impl ResponseBody {
         &mut self,
         bytes: &mut BytesMut,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<(), crate::h2::Error>> {
+    ) -> Poll<Result<(), crate::error::Error>> {
         let chunk = bytes.chunk();
         if self.want_poll_cap {
             let res = ready!(self.tx.poll_capacity(cx));
@@ -100,7 +100,7 @@ impl ResponseBody {
         }
     }
 
-    pub(crate) fn send_data(&mut self, bytes: Bytes, eof: bool) -> Result<(), crate::h2::Error> {
+    pub(crate) fn send_data(&mut self, bytes: Bytes, eof: bool) -> Result<(), crate::error::Error> {
         self.tx.send_data(bytes, eof).map_err(Into::into)
     }
 }

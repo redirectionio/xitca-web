@@ -4,6 +4,11 @@ use core::{convert::Infallible, fmt, str};
 
 use std::{error, io};
 
+#[cfg(feature = "http3")]
+pub use crate::h3::Error as H3Error;
+
+use xitca_http::error::BodyError;
+
 use super::http::{StatusCode, uri};
 
 #[derive(Debug)]
@@ -14,11 +19,11 @@ pub enum Error {
     InvalidUri(InvalidUri),
     UnexpectedResponse(Box<ErrorResponse>),
     #[cfg(feature = "http1")]
-    H1(crate::h1::Error),
+    H1(xitca_http::h1::proto::error::ProtoError),
     #[cfg(feature = "http2")]
-    H2(crate::h2::Error),
+    H2(h2::Error),
     #[cfg(feature = "http3")]
-    H3(crate::h3::Error),
+    H3(H3Error),
     #[cfg(feature = "openssl")]
     Openssl(_openssl::OpensslError),
     #[cfg(any(feature = "rustls", feature = "rustls-ring-crypto"))]
@@ -32,6 +37,7 @@ pub enum Error {
     /// refuses before sending anything.
     Grpc(crate::grpc::GrpcStatusError),
     Parse(ParseError),
+    Body(BodyError),
 }
 
 impl fmt::Display for Error {
@@ -254,15 +260,15 @@ impl From<serde_json::Error> for Error {
 }
 
 #[cfg(feature = "http1")]
-impl From<crate::h1::Error> for Error {
-    fn from(e: crate::h1::Error) -> Self {
+impl From<xitca_http::h1::proto::error::ProtoError> for Error {
+    fn from(e: xitca_http::h1::proto::error::ProtoError) -> Self {
         Self::H1(e)
     }
 }
 
 #[cfg(feature = "http2")]
-impl From<crate::h2::Error> for Error {
-    fn from(e: crate::h2::Error) -> Self {
+impl From<h2::Error> for Error {
+    fn from(e: h2::Error) -> Self {
         Self::H2(e)
     }
 }

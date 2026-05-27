@@ -218,7 +218,7 @@ async fn establish(
                         Err(e) if is_h2c && allow_h2c_downgrade => {
                             #[cfg(not(feature = "http1"))]
                             {
-                                return Err(e.into());
+                                return Err(e);
                             }
                             #[cfg(feature = "http1")]
                             {
@@ -226,7 +226,7 @@ async fn establish(
                                 Ok(SpawnOutCome::RetryLower(Version::HTTP_11))
                             }
                         }
-                        Err(e) => Err(e.into()),
+                        Err(e) => Err(e),
                     }
                 } else {
                     #[cfg(not(feature = "http1"))]
