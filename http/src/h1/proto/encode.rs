@@ -6,7 +6,7 @@ use crate::{
     date::DateTime,
     http::{
         StatusCode,
-        header::{CONNECTION, CONTENT_LENGTH, DATE, HeaderMap, SET_COOKIE, TE, TRANSFER_ENCODING, UPGRADE},
+        header::{CONNECTION, CONTENT_LENGTH, COOKIE, DATE, HeaderMap, SET_COOKIE, TE, TRANSFER_ENCODING, UPGRADE},
         response::Parts,
     },
 };
@@ -117,6 +117,9 @@ where
                 })
                 .unwrap_or(true);
 
+            // RFC 6265 Section 5.4: Cookie header values MUST use "; " separator, not ", "
+            let separator: &[u8] = if name == COOKIE { b"; " } else { b", " };
+
             match name {
                 CONNECTION => {
                     if self.is_connection_closed() {
@@ -153,8 +156,8 @@ where
             let value = value.as_bytes();
 
             if is_multi_value {
-                buf.reserve(value.len() + 2);
-                buf.extend_from_slice(b", ");
+                buf.reserve(value.len() + separator.len());
+                buf.extend_from_slice(separator);
                 buf.extend_from_slice(value);
             } else {
                 let name = name.as_str().as_bytes();
@@ -242,7 +245,7 @@ mod test {
     use crate::{
         body::{BoxBody, Full},
         date::SystemTimeDateTimeHandler,
-        http::{HeaderValue, Response},
+        http::{HeaderValue, Response, header::COOKIE},
     };
 
     use super::*;
@@ -304,5 +307,37 @@ mod test {
         assert_eq!(header[0].value, b"foo=foo");
         assert_eq!(header[1].name, "set-cookie");
         assert_eq!(header[1].value, b"bar=bar");
+    }
+
+    #[test]
+    fn multi_cookie_semicolon_separator() {
+        let mut ctx = Context::<_, 64>::new(&SystemTimeDateTimeHandler, false);
+
+        let mut res = Response::new(BoxBody::new(Full::new(Bytes::new())));
+
+        // Cookie header values MUST be joined with "; " per RFC 6265 Section 5.4
+        res.headers_mut()
+            .insert(COOKIE, HeaderValue::from_static("foo=foo"));
+        res.headers_mut()
+            .append(COOKIE, HeaderValue::from_static("bar=bar"));
+
+        let (parts, body) = res.into_parts();
+
+        let mut buf = BytesMut::new();
+        ctx.encode_head(parts, &body, &mut buf).unwrap();
+
+        let mut header = [httparse::EMPTY_HEADER; 8];
+        let mut res = httparse::Response::new(&mut header);
+
+        let httparse::Status::Complete(_) = res.parse(buf.as_ref()).unwrap() else {
+            panic!("failed to parse response")
+        };
+
+        for h in header {
+            if h.name.eq_ignore_ascii_case("cookie") {
+                // must be joined with "; " not ", "
+                assert_eq!(h.value, b"foo=foo; bar=bar");
+            }
+        }
     }
 }
