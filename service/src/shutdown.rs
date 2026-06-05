@@ -49,7 +49,9 @@ pub struct BoxShutdownListener {
 impl BoxShutdownListener {
     /// erase `listener` behind a [`BoxShutdownListener`].
     pub fn new(listener: impl ShutdownListener + Sync + 'static) -> Self {
-        Self { inner: Arc::new(listener) }
+        Self {
+            inner: Arc::new(listener),
+        }
     }
 }
 

@@ -60,8 +60,7 @@ impl KeepAlive {
         Self {
             timer: sleep_until(deadline),
             deadline,
-            shutdown: shutdown
-                .map(|s| Box::pin(s.wait()) as Pin<Box<dyn Future<Output = ()> + Send>>),
+            shutdown: shutdown.map(|s| Box::pin(s.wait()) as Pin<Box<dyn Future<Output = ()> + Send>>),
         }
     }
 
