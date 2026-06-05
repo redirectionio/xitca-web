@@ -202,7 +202,12 @@ where
             return Ok(len);
         }
 
-        let mut read_buf = session.read_buf.take().expect(POLL_TO_COMPLETE);
+        let mut read_buf = match session.read_buf.take() {
+            Some(buf) => buf,
+            // A previous read_tls was cancelled mid-await (e.g. future dropped by a select).
+            // Return BrokenPipe so callers like lingering_read can treat this as EOF.
+            None => return Err(io::Error::new(io::ErrorKind::BrokenPipe, POLL_TO_COMPLETE)),
+        };
 
         let res = loop {
             // Call process_tls_records directly to copy record payload
@@ -320,7 +325,10 @@ where
     /// Encrypt plaintext and write all ciphertext to IO.
     async fn write_tls(&self, plain: &impl BoundedBuf) -> io::Result<usize> {
         let mut session = self.session.borrow_mut();
-        let mut write_buf = session.write_buf.take().expect(POLL_TO_COMPLETE);
+        let mut write_buf = match session.write_buf.take() {
+            Some(buf) => buf,
+            None => return Err(io::Error::new(io::ErrorKind::BrokenPipe, POLL_TO_COMPLETE)),
+        };
         let plaintext = plain.chunk();
 
         // Flush protocol data buffered by read path (key updates, alerts).
@@ -391,7 +399,10 @@ where
         self.write_tls(&Vec::new()).await?;
 
         let mut session = self.session.borrow_mut();
-        let mut write_buf = session.write_buf.take().expect(POLL_TO_COMPLETE);
+        let mut write_buf = match session.write_buf.take() {
+            Some(buf) => buf,
+            None => return Err(io::Error::new(io::ErrorKind::BrokenPipe, POLL_TO_COMPLETE)),
+        };
 
         loop {
             let UnbufferedStatus { state, .. } = session.conn.process_tls_records(&mut []);

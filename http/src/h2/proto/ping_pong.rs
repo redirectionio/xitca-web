@@ -4,7 +4,7 @@ use std::io;
 
 use crate::{
     date::{DateTime, DateTimeHandle},
-    util::timer::KeepAlive,
+    util::timer::{KeepAlive, KeepAliveOutput},
 };
 
 use super::flow::FlowControlLock;
@@ -32,7 +32,9 @@ impl<'a> PingPong<'a> {
     }
 
     pub(crate) async fn tick(&mut self) -> io::Result<()> {
-        self.timer.as_mut().await;
+        if let KeepAliveOutput::Cancel = self.timer.as_mut().await {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "shutdown"));
+        }
 
         self.flow.borrow_mut().try_set_pending_ping()?;
 

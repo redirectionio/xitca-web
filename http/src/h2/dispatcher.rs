@@ -702,8 +702,10 @@ async fn lingering_read(io: &impl AsyncBufRead, mut ka: Pin<&mut KeepAlive>, dat
             Ok((res, buf)) => {
                 read_buf = buf;
 
-                if res? == 0 {
-                    return Ok(());
+                match res {
+                    // EOF or IO error (including BrokenPipe from a cancelled prior read)
+                    Err(_) | Ok(0) => return Ok(()),
+                    Ok(_) => {}
                 }
             }
             Err(_) => return Ok(()),

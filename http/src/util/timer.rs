@@ -5,7 +5,7 @@ use core::{
 
 use pin_project_lite::pin_project;
 use tokio::time::{Instant, Sleep, sleep_until};
-use xitca_service::shutdown::ShutdownListener;
+use xitca_service::shutdown::{ShutdownListener, ShutdownState};
 
 pub(crate) trait Timeout: Sized {
     fn timeout(self, timer: Pin<&mut KeepAlive>) -> TimeoutFuture<'_, Self>;
@@ -50,7 +50,8 @@ pin_project! {
         #[pin]
         timer: Sleep,
         deadline: Instant,
-        shutdown: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
+        // ShutdownState is Unpin (Pin<Box<T>> is Unpin), so no #[pin] needed.
+        shutdown: ShutdownState,
     }
 }
 
@@ -60,7 +61,7 @@ impl KeepAlive {
         Self {
             timer: sleep_until(deadline),
             deadline,
-            shutdown: shutdown.map(|s| Box::pin(s.wait()) as Pin<Box<dyn Future<Output = ()> + Send>>),
+            shutdown: shutdown.into(),
         }
     }
 
@@ -87,10 +88,8 @@ impl Future for KeepAlive {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.as_mut().project();
 
-        if let Some(shutdown_fut) = this.shutdown.as_mut() {
-            if shutdown_fut.as_mut().poll(cx).is_ready() {
-                return Poll::Ready(KeepAliveOutput::Cancel);
-            }
+        if this.shutdown.poll_cancelled(cx) {
+            return Poll::Ready(KeepAliveOutput::Cancel);
         }
 
         ready!(this.timer.poll(cx));
