@@ -1,4 +1,4 @@
-use core::{marker::PhantomData, net::SocketAddr, time::Duration};
+use core::{marker::PhantomData, time::Duration};
 use std::hash::Hash;
 use xitca_unsafe_collection::bytes::BytesStr;
 
@@ -6,6 +6,7 @@ use crate::{
     body::{Body, BodyError, BodyExt, BoxBody, Data, RequestBody, Trailers, downcast_body},
     bytes::Bytes,
     client::Client,
+    connect::Addrs,
     error::Error,
     http::{
         self, Extensions, Method, Version, const_header_value,
@@ -19,7 +20,7 @@ use crate::{
 pub struct RequestBuilder<'a, M = marker::Http> {
     pub(crate) req: http::Request<RequestBody>,
     pub(crate) err: Vec<Error>,
-    address: Option<SocketAddr>,
+    address: Addrs,
     client: &'a Client,
     request_timeout: Duration,
     response_timeout: Duration,
@@ -133,7 +134,7 @@ impl<'a, M> RequestBuilder<'a, M> {
         Self {
             req: req.map(downcast_body),
             err: Vec::new(),
-            address: None,
+            address: Addrs::None,
             client,
             request_timeout: client.timeout_config.request_timeout,
             response_timeout: client.timeout_config.response_timeout,
@@ -273,8 +274,8 @@ impl<'a, M> RequestBuilder<'a, M> {
 
     /// Set specific address for this request.
     #[inline]
-    pub fn address(mut self, addr: SocketAddr) -> Self {
-        self.address = Some(addr);
+    pub fn address(mut self, addr: Addrs) -> Self {
+        self.address = addr;
         self
     }
 

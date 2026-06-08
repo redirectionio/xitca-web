@@ -67,7 +67,7 @@ where
                 .service
                 .call(ServiceRequest {
                     req,
-                    address,
+                    address: address.clone(),
                     client,
                     request_timeout,
                     response_timeout,

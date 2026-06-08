@@ -52,8 +52,8 @@ fn scheme_to_port(scheme: Option<&str>) -> Option<u16> {
     }
 }
 
-#[derive(Debug, Default, Eq, PartialEq, Hash)]
-pub(crate) enum Addrs {
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
+pub enum Addrs {
     #[default]
     None,
     One(SocketAddr),
@@ -80,16 +80,13 @@ pub struct Connect<'a> {
 
 impl<'a> Connect<'a> {
     /// Create `Connect` instance by splitting the string by ':' and convert the second part to u16
-    pub fn new(uri: Uri<'a>, address: Option<SocketAddr>, sni_hostname: Option<&'a SniHostname>) -> Self {
+    pub fn new(uri: Uri<'a>, addr: Addrs, sni_hostname: Option<&'a SniHostname>) -> Self {
         let (_, port) = parse_host(uri.hostname());
 
         Self {
             uri,
             port: port.unwrap_or(0),
-            addr: match address {
-                Some(address) => Addrs::One(address),
-                None => Addrs::None,
-            },
+            addr,
             sni_hostname,
         }
     }
