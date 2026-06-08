@@ -78,13 +78,17 @@ where
         let mut body = RefCell::new(LimitBody::new(body, self.limit.request_body_size));
         let mut req = Request::from_parts(parts, ext);
 
-        self.service
-            .call(WebContext::new(&mut req, &mut body, state))
-            .await
-            .inspect_err(|_| {
-                let body = body.into_inner().into_inner();
-                *ctx.body_borrow_mut() = body;
-            })
+        let res = self.service.call(WebContext::new(&mut req, &mut body, state)).await;
+
+        // restore the original request data (headers/uri/extensions/etc, moved out via
+        // `take_request`) so code running after this middleware observes an intact
+        // `ctx.req`, regardless of whether the inner call succeeded or failed.
+        *ctx.req_mut() = req;
+
+        res.inspect_err(|_| {
+            let body = body.into_inner().into_inner();
+            *ctx.body_borrow_mut() = body;
+        })
     }
 }
 

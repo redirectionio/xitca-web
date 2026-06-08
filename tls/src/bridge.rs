@@ -34,12 +34,24 @@ impl SyncBridge {
         }
     }
 
-    pub(crate) fn take_write_buf(&mut self) -> BytesMut {
-        self.write_buf.take().expect(POLL_TO_COMPLETE)
+    /// Take the write buffer out for the caller to fill/drain across an await point.
+    ///
+    /// Returns `BrokenPipe` instead of panicking when the buffer is missing: this happens
+    /// when a previous write future was dropped mid-await (e.g. cancelled by a `select!`
+    /// or a timeout) before it could put the buffer back. The connection is unusable at
+    /// that point and callers should treat this as a (broken pipe flavoured) IO error
+    /// rather than crashing the task.
+    pub(crate) fn take_write_buf(&mut self) -> io::Result<BytesMut> {
+        self.write_buf.take().ok_or_else(broken_pipe)
     }
 
-    pub(crate) fn take_read_buf(&mut self) -> BytesMut {
-        self.read_buf.take().expect(POLL_TO_COMPLETE)
+    /// Take the read buffer out for the caller to fill across an await point.
+    ///
+    /// See [`SyncBridge::take_write_buf`] for why this returns a `Result` rather than
+    /// panicking: a cancelled read future leaves the buffer taken, and any later read
+    /// must be reported as a (broken pipe flavoured) IO error instead of panicking.
+    pub(crate) fn take_read_buf(&mut self) -> io::Result<BytesMut> {
+        self.read_buf.take().ok_or_else(broken_pipe)
     }
 
     pub(crate) fn set_read_buf(&mut self, buf: BytesMut) {
@@ -53,7 +65,10 @@ impl SyncBridge {
 
 impl io::Read for SyncBridge {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let read_buf = self.read_buf.as_mut().expect(POLL_TO_COMPLETE);
+        // `None` here means a previous async read was cancelled mid-await and never
+        // returned the buffer. Report it as a broken pipe instead of panicking so the
+        // TLS library surfaces it as a regular IO error.
+        let read_buf = self.read_buf.as_mut().ok_or_else(broken_pipe)?;
         if read_buf.is_empty() {
             return Err(io::ErrorKind::WouldBlock.into());
         }
@@ -66,7 +81,8 @@ impl io::Read for SyncBridge {
 
 impl io::Write for SyncBridge {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.write_buf.as_mut().expect(POLL_TO_COMPLETE).extend_from_slice(buf);
+        // see comment in `Read::read` above: `None` means a cancelled async write.
+        self.write_buf.as_mut().ok_or_else(broken_pipe)?.extend_from_slice(buf);
         Ok(buf.len())
     }
 
@@ -77,7 +93,7 @@ impl io::Write for SyncBridge {
 
 /// Read ciphertext from the network into `bridge.read_buf`.
 pub(crate) async fn fill_read_buf(io: &impl AsyncBufRead, bridge: &mut SyncBridge) -> io::Result<()> {
-    let mut buf = bridge.take_read_buf();
+    let mut buf = bridge.take_read_buf()?;
     let len = buf.len();
     buf.reserve(4096);
 
@@ -93,7 +109,7 @@ pub(crate) async fn fill_read_buf(io: &impl AsyncBufRead, bridge: &mut SyncBridg
 
 /// Drain all ciphertext from `bridge.write_buf` to the network.
 pub(crate) async fn drain_write_buf(io: &impl AsyncBufWrite, bridge: &mut SyncBridge) -> io::Result<()> {
-    let buf = bridge.take_write_buf();
+    let buf = bridge.take_write_buf()?;
 
     let (res, buf) = drain_write(io, buf).await;
     bridge.set_write_buf(buf);
@@ -129,3 +145,11 @@ pub(crate) unsafe fn spare_capacity_mut(buf: &mut impl BoundedBufMut) -> &mut [u
 }
 
 const POLL_TO_COMPLETE: &str = "previous call to future didn't polled to completion";
+
+/// Error reported when a buffer is missing because a previous async read/write was
+/// cancelled mid-await (e.g. dropped by a `select!` or a timeout) and never returned
+/// it. The connection is unusable at that point; `BrokenPipe` lets callers (and the
+/// wrapped TLS library) treat it as a regular IO error instead of panicking.
+fn broken_pipe() -> io::Error {
+    io::Error::new(io::ErrorKind::BrokenPipe, POLL_TO_COMPLETE)
+}

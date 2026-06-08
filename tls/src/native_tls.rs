@@ -122,8 +122,10 @@ where
             match io::Read::read(&mut *tls, buf) {
                 Ok(n) => return Ok(n),
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // Take read_buf — panics if another read is in progress.
-                    let mut read_buf = tls.get_mut().take_read_buf();
+                    // Take read_buf — returns `BrokenPipe` if a previous read was
+                    // cancelled mid-await (e.g. by a keep-alive/read timeout select)
+                    // and never returned the buffer.
+                    let mut read_buf = tls.get_mut().take_read_buf()?;
 
                     let len = read_buf.len();
                     read_buf.reserve(4096);
@@ -182,7 +184,8 @@ where
         loop {
             match io::Write::write(&mut *tls, buf) {
                 Ok(n) => {
-                    let buf = tls.get_mut().take_write_buf();
+                    // returns `BrokenPipe` if a previous write was cancelled mid-await.
+                    let buf = tls.get_mut().take_write_buf()?;
                     drop(tls);
 
                     let (res, buf) = bridge::drain_write(&self.io, buf).await;
@@ -193,7 +196,7 @@ where
                     return res.map(|_| n);
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    let buf = tls.get_mut().take_write_buf();
+                    let buf = tls.get_mut().take_write_buf()?;
                     drop(tls);
 
                     let (res, buf) = bridge::drain_write(&self.io, buf).await;

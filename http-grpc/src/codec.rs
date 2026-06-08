@@ -103,17 +103,23 @@ impl Codec {
     /// When compression is enabled and the `compress` feature is active, the payload
     /// is compressed and the flag byte is set to 1.
     pub fn encode<T: Message>(&self, msg: &T, dst: &mut BytesMut) -> Result<(), ProtocolError> {
+        // `dst` may already contain previously encoded (and not yet flushed) frames so the
+        // new frame's header/length must be addressed relative to the buffer's current end
+        // rather than absolute offsets 0..5, otherwise the length write and (when compression
+        // is active) the buffer rewrite would corrupt the framing of earlier buffered frames.
+        let frame_start = dst.len();
+
         let encoded_len = msg.encoded_len();
         dst.reserve(5 + encoded_len);
         dst.put_u8(0); // compression flag placeholder
         dst.put_u32(0); // length placeholder
         msg.encode(dst).map_err(ProtocolError::Encode)?;
 
-        self.compress(dst)?;
+        self.compress(dst, frame_start)?;
 
         // write actual payload length
-        let len = (dst.len() - 5) as u32;
-        dst[1..5].copy_from_slice(&len.to_be_bytes());
+        let len = (dst.len() - frame_start - 5) as u32;
+        dst[frame_start + 1..frame_start + 5].copy_from_slice(&len.to_be_bytes());
 
         Ok(())
     }
@@ -153,17 +159,18 @@ impl Codec {
     }
 
     #[cfg(feature = "__compress")]
-    fn compress(&self, dst: &mut BytesMut) -> Result<(), ProtocolError> {
+    fn compress(&self, dst: &mut BytesMut, frame_start: usize) -> Result<(), ProtocolError> {
         if matches!(self.encoding, ContentEncoding::Identity) {
             return Ok(());
         }
 
-        let payload = dst.split_off(5);
+        let payload = dst.split_off(frame_start + 5);
         let body = self.encoding.encode_body(Full::new(payload));
         let mut body = core::pin::pin!(body);
 
-        // clear and rewrite header
-        dst.clear();
+        // drop the uncompressed payload and placeholder header of this frame (keeping any
+        // previously buffered frames intact) and rewrite the header for the compressed frame
+        dst.truncate(frame_start);
         dst.put_u8(1); // compressed flag
         dst.put_u32(0); // length placeholder
 
@@ -186,7 +193,7 @@ impl Codec {
     }
 
     #[cfg(not(feature = "__compress"))]
-    fn compress(&self, _: &mut BytesMut) -> Result<(), ProtocolError> {
+    fn compress(&self, _: &mut BytesMut, _: usize) -> Result<(), ProtocolError> {
         Ok(())
     }
 }

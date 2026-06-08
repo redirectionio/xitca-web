@@ -383,8 +383,15 @@ impl TransferCoding {
         match (&self, &other) {
             // multiple set to plain chunked is allowed. This can happen from Connect method
             // and/or Connection header.
-            // skip set when the request body is zero length.
-            (TransferCoding::Upgrade, TransferCoding::Upgrade) | (_, TransferCoding::Length(0)) => Ok(()),
+            // a zero length Content-Length alongside an upgraded body (e.g. CONNECT) is
+            // ignored as the upgraded body is not length delimited.
+            //
+            // note: this arm must stay scoped to `TransferCoding::Upgrade`. Matching on
+            // `(_, TransferCoding::Length(0))` would let a `Content-Length: 0` header pass
+            // through as a no-op without recording it, so a later conflicting
+            // `Content-Length: N` header would not be detected as a duplicate/conflicting
+            // value (RFC 9112 section 6.3 request smuggling).
+            (TransferCoding::Upgrade, TransferCoding::Upgrade) | (TransferCoding::Upgrade, TransferCoding::Length(0)) => Ok(()),
             // multiple set to decoded chunked/content-length are forbidden.
             // mutation between decoded chunked/content-length/plain chunked is forbidden.
             (TransferCoding::Upgrade, _)

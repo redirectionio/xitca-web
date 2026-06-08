@@ -60,19 +60,31 @@ mod service {
             let (ext, body) = ext.replace_body(());
             let req = Request::from_parts(parts, ());
 
-            let decoder = http_encoding::try_decoder(req.headers(), body)?;
+            let decoder = match http_encoding::try_decoder(req.headers(), body) {
+                Ok(decoder) => decoder,
+                Err(e) => {
+                    // restore the original request data (moved out via `take_request`) before
+                    // bailing out so code running after this middleware observes an intact `ctx.req`.
+                    *ctx.req_mut() = req.map(|_| ext);
+                    return Err(e.into());
+                }
+            };
             let mut body = RefCell::new(decoder);
             let mut req = req.map(|_| ext);
 
-            self.0
-                .call(WebContext::new(&mut req, &mut body, state))
-                .await
-                .map_err(|e| {
-                    // restore original body as error path of other services may have use of it.
-                    let body = body.into_inner().into_inner();
-                    *ctx.body_borrow_mut() = body;
-                    e.into()
-                })
+            let res = self.0.call(WebContext::new(&mut req, &mut body, state)).await;
+
+            // restore the original request data (headers/uri/extensions/etc, moved out via
+            // `take_request`) so code running after this middleware observes an intact
+            // `ctx.req`, regardless of whether the inner call succeeded or failed.
+            *ctx.req_mut() = req;
+
+            res.map_err(|e| {
+                // restore original body as error path of other services may have use of it.
+                let body = body.into_inner().into_inner();
+                *ctx.body_borrow_mut() = body;
+                e.into()
+            })
         }
     }
 
