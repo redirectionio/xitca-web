@@ -85,12 +85,25 @@ pub(crate) fn base_service() -> HttpService {
                         }
                         #[cfg(feature = "http3")]
                         crate::connection::ConnectionShared::H3(c) => {
-                            let res = crate::h3::proto::send(c, _date, core::mem::take(req))
+                            match crate::h3::proto::send(c, _date, core::mem::take(req))
                                 .timeout(_timer.as_mut())
                                 .await
-                                .map_err(|_| TimeoutError::Request)??;
-
-                            Ok(Response::new(res, _timer, response_timeout))
+                            {
+                                Ok(Ok(res)) => Ok(Response::new(res, _timer, response_timeout)),
+                                Ok(Err(e)) => {
+                                    // h3 0.0.8 exposes no readiness API (see `ConnectionShared::ready`),
+                                    // so a failed send is the only signal we get that this connection is
+                                    // no longer usable. evict it now, otherwise every following request
+                                    // for this key would keep acquiring and failing on the same dead
+                                    // connection forever.
+                                    conn.mark_destroy();
+                                    Err(e)
+                                }
+                                Err(_) => {
+                                    conn.mark_destroy();
+                                    Err(TimeoutError::Request.into())
+                                }
+                            }
                         }
                         _ => unreachable!("ConnectionShared has no enabled variants"),
                     }
