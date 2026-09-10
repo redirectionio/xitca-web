@@ -86,7 +86,7 @@ impl ResponseBody {
             let res = ready!(self.tx.poll_capacity(cx));
             self.want_poll_cap = false;
             let cap =
-                res.ok_or_else(|| crate::h2::Error::Body(io::Error::from(io::ErrorKind::UnexpectedEof).into()))??;
+                res.ok_or_else(|| crate::error::Error::Body(io::Error::from(io::ErrorKind::UnexpectedEof).into()))??;
 
             let len = cmp::min(cap, chunk.len());
             let bytes = bytes.split_to(len).freeze();
