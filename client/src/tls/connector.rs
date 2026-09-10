@@ -84,7 +84,7 @@ pub(crate) mod openssl {
         #[cfg(feature = "dangerous")]
         {
             if allow_invalid_certs {
-                ssl.set_verify(openssl::ssl::SslVerifyMode::NONE);
+                ssl.set_verify(openssl_poll::ssl::SslVerifyMode::NONE);
             }
         }
 
